@@ -12,6 +12,7 @@ use App\LocalDay;
 use App\Price\Price;
 use App\Price\PriceConverter;
 use App\Price\PricePeriod;
+use App\PriceLoader;
 
 $config   = require __DIR__ . '/../config/config.php';
 $timezone = new DateTimeZone($config['timezone']);
@@ -45,40 +46,15 @@ try {
 
     $day = new LocalDay($date, $timezone);
 
-    $client = new EleringClient(
-        new HttpClient($config['api_base_url'], $config['http_timeout']),
+    // submit.php needs exactly the same cache-then-fetch, so it lives in PriceLoader.
+    $loader = new PriceLoader(
+        new EleringClient(new HttpClient($config['api_base_url'], $config['http_timeout'])),
+        new FileCache($config['cache_dir']),
+        $config['cache_ttl'],
     );
 
-    
-    $cache    = new FileCache($config['cache_dir']);
-    $cacheKey = $config['region'] . '-' . $date;
-
-    $rows = $cache->get($cacheKey);
-
-    if ($rows === null) {
-        try {
-            $rows = $client->getPrices(
-                $day->start()->format('Y-m-d\TH:i:s.v\Z'),
-                $day->end()->modify('-1 second')->format('Y-m-d\TH:i:s.v\Z'),
-                $config['region'],
-            );
-
-
-            if ($rows !== []) {
-                $cache->set($cacheKey, $rows, $config['cache_ttl']);
-            }
-        } catch (RuntimeException $e) {
-            $rows = $cache->getStale($cacheKey);
-
-            if ($rows === null) {
-                throw $e;
-            }
-
-            $stale = true;
-        }
-    }
-
-    $periods = PricePeriod::listFromRows($rows);
+    $periods = PricePeriod::listFromRows($loader->rowsFor($day, $date, $config['region']));
+    $stale   = $loader->servedStale();
 
 
     if ($periods !== [] && count($periods) * $periods[0]->durationInSeconds >= $window * 3600) {
@@ -178,6 +154,14 @@ $fmt = static fn (float $n): string => number_format($n, 2, ',', ' ');
             Näita
         </button>
     </form>
+
+    <?php if (isset($_GET['sent'])): ?>
+
+        <div class="rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">
+            Tulemus on saadetud. Aitäh!
+        </div>
+
+    <?php endif; ?>
 
     <?php if ($stale): ?>
 
@@ -363,6 +347,21 @@ $fmt = static fn (float $n): string => number_format($n, 2, ',', ' ');
                 },
             });
         </script>
+
+    <?php endif; ?>
+
+    <?php if ($prices !== null): ?>
+
+        <?php $formValues = ['name' => '', 'email' => '', 'phone' => '']; ?>
+
+        <div class="mt-8 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <details>
+                <summary class="cursor-pointer select-none text-sm font-medium">
+                    Saada tulemus
+                </summary>
+                <?php require __DIR__ . '/../templates/submit-form.php'; ?>
+            </details>
+        </div>
 
     <?php endif; ?>
 

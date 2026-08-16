@@ -22,4 +22,14 @@ return [
     'seller_margin' => 0,   // s/kWh
     'default_window_hours' => 3,    // Default length of cheapest/most expensive window in hours (1-6)
 
+    'github_repo_url' => 'https://github.com/vhnii/qilowatt_homework',
+
+    'mail' => [
+        'host' => $_ENV['SMTP_HOST'] ?? null,
+        'port' => (int) ($_ENV['SMTP_PORT'] ?? 587),    
+        'user' => $_ENV['SMTP_USER'] ?? null,
+        'pass' => $_ENV['SMTP_PASS'] ?? null,           
+        'from' => $_ENV['SMTP_USER'] ?? null,
+        'to'   => $_ENV['MAIL_TO'] ?? null,             
+    ],
 ];
