@@ -13,6 +13,9 @@ return [
     'region'       => 'ee',
     'http_timeout' => 5,
 
+    'cache_dir' => __DIR__ . '/../cache',
+    'cache_ttl' => 3600,    // Seconds.
+
     'timezone' => 'Europe/Tallinn',    // Timezone to show in UI
     'vat_rate'      => 0.24,    // 24% VAT
     'network_fee'   => 0,   // s/kWh

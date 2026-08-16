@@ -7,9 +7,11 @@ require __DIR__ . '/../vendor/autoload.php';
 
 use App\Api\EleringClient;
 use App\Api\HttpClient;
+use App\Cache\FileCache;
 use App\LocalDay;
 use App\Price\Price;
 use App\Price\PriceConverter;
+use App\Price\PricePeriod;
 
 $config   = require __DIR__ . '/../config/config.php';
 $timezone = new DateTimeZone($config['timezone']);
@@ -37,6 +39,7 @@ $priceConverter = new PriceConverter(
 $periods = [];
 $prices = null;
 $error = null;
+$stale = false;
 
 try {
 
@@ -46,11 +49,36 @@ try {
         new HttpClient($config['api_base_url'], $config['http_timeout']),
     );
 
-    $periods = $client->getPrices(
-        $day->start()->format('Y-m-d\TH:i:s.v\Z'),
-        $day->end()->modify('-1 second')->format('Y-m-d\TH:i:s.v\Z'),
-        $config['region'],
-    );
+    
+    $cache    = new FileCache($config['cache_dir']);
+    $cacheKey = $config['region'] . '-' . $date;
+
+    $rows = $cache->get($cacheKey);
+
+    if ($rows === null) {
+        try {
+            $rows = $client->getPrices(
+                $day->start()->format('Y-m-d\TH:i:s.v\Z'),
+                $day->end()->modify('-1 second')->format('Y-m-d\TH:i:s.v\Z'),
+                $config['region'],
+            );
+
+
+            if ($rows !== []) {
+                $cache->set($cacheKey, $rows, $config['cache_ttl']);
+            }
+        } catch (RuntimeException $e) {
+            $rows = $cache->getStale($cacheKey);
+
+            if ($rows === null) {
+                throw $e;
+            }
+
+            $stale = true;
+        }
+    }
+
+    $periods = PricePeriod::listFromRows($rows);
 
 
     if ($periods !== [] && count($periods) * $periods[0]->durationInSeconds >= $window * 3600) {
@@ -150,6 +178,14 @@ $fmt = static fn (float $n): string => number_format($n, 2, ',', ' ');
             Näita
         </button>
     </form>
+
+    <?php if ($stale): ?>
+
+        <div class="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+            Elering ei vastanud. Nähtaval on viimati salvestatud hinnad.
+        </div>
+
+    <?php endif; ?>
 
     <?php if ($error !== null): ?>
 
